@@ -11,6 +11,19 @@
 #define TEST_COUNT (1024*1024*1024)
 
 
+void run_test(struct testproducer * pprod, struct testconsumer * pcons);
+
+
+/*
+ * Datapath in this test:
+ *   1 - prod			(testproducer)
+ *   2 - fifo_writer		(fifo_writer)
+ *   3 - fifo			(fifo)
+ *   4 - fifo_reader		(fifo_reader)
+ *   5 - cons			(testconsumer)
+ */
+
+
 //---------------------------------------------------------------------------
 void
 test01()
@@ -29,22 +42,10 @@ test01()
 	fifo_reader_init(&fifo_reader, &fifo);
 
 	// Init test
-	testconsumer_init(&cons, &fifo_reader, TEST_COUNT);
 	testproducer_init(&prod, &fifo_writer, TEST_COUNT);
+	testconsumer_init(&cons, &fifo_reader, TEST_COUNT);
 
-	while ( (testproducer_done (&prod) == 0) &&
-		(testconsumer_done (&cons) == 0) &&
-		(testconsumer_error(&cons) == 0))
-	{
-		// Fill the fifo to the IOP
-		testproducer_produce(&prod);
-		// Empty the fifo from the IOP
-		testconsumer_consume(&cons);
-	}
-
-	std::cout<<"Done, produced: "<<((prod.actual32*4)/(1024*1024))<<"MiB"
-	         <<    ", consumed: "<<((cons.actual32*4)/(1024*1024))<<"MiB"
-	         <<std::endl;
+	run_test(&prod, &cons);
 
 	// Cleanup
 	delete[] databuffer;
