@@ -7,6 +7,7 @@
  */
 
 #include "fifo_writer.h"
+#include "fifo_reader.h"
 
 #ifdef __cplusplus
 extern "C" {

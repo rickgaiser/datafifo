@@ -47,6 +47,7 @@ static inline unsigned int testproducer_produce_one(struct testproducer *pprod)
 	size = fifo_writer_get_free_contiguous(pwriter, sizeof(uint32_t));
 	if (size > FIFO_BLOCK_MAX_SIZE)
 		size = FIFO_BLOCK_MAX_SIZE;
+	size &= ~3;
 	if (size < sizeof(uint32_t))
 		return 0;
 
