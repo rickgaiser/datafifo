@@ -11,6 +11,7 @@ using std::chrono::milliseconds;
 
 
 void test01();
+void test02();
 
 
 void print_data_size(unsigned int size)
@@ -57,6 +58,12 @@ main()
 	std::cout<<"datafifo test01"<<std::endl;
 	tstart = system_clock::now();
 	test01();
+	tend = system_clock::now();
+	std::cout<<"  - Time: "<<std::chrono::duration_cast<milliseconds>(tend - tstart).count()<<"ms"<<std::endl<<std::endl;
+
+	std::cout<<"datafifo test02"<<std::endl;
+	tstart = system_clock::now();
+	test02();
 	tend = system_clock::now();
 	std::cout<<"  - Time: "<<std::chrono::duration_cast<milliseconds>(tend - tstart).count()<<"ms"<<std::endl<<std::endl;
 
