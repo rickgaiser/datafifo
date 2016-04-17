@@ -39,21 +39,22 @@ struct fifo_pipe
 	struct fifo_reader *preader;
 	struct fifo_writer *pwriter;
 
-	void (*fp_transfer)(void *dst, const void *src, size_t size, struct fifo_pipe_transfer *ptransfer);
+	void (*fp_transfer)(struct fifo_pipe_transfer *ptransfer);
 };
 
 //---------------------------------------------------------------------------
 struct fifo_pipe_transfer
 {
 	struct fifo_pipe *ppipe;
-	unsigned int batch_size;
-#ifdef USE_BATCHES
+
+	void *dst;
+	const void *src;
+	size_t size;
+
 	unsigned int batch_count;
-#endif
 };
 
-#ifdef USE_BATCHES
-/** @brief Commit a batch data transfer into the fifo
+/** @brief Commit a transfer into the fifo
  *
  *  The output fifo will be notified of the new data
  *  The input fifo data will be freed
@@ -61,16 +62,16 @@ struct fifo_pipe_transfer
  *  Note: This function should be called after the data has been successfully
  *  transferred into the output fifo.
  *
- *  Note: Because of alignment restriction the batch_size is not always equal
- *  to the sum of all data transfers in the batch.
- *
  *  @param ppipe the fifo_pipe object
- *  @param batch_count the number of data transfers in this batch
- *  @param batch_size the total batch size
+ *  @param ptransfer the fifo_pipe_transfer object
  */
-static inline void fifo_pipe_commit_batch(struct fifo_pipe *ppipe, unsigned int batch_count, unsigned int batch_size)
+static inline void fifo_pipe_transfer_commit(struct fifo_pipe *ppipe, struct fifo_pipe_transfer *ptransfer)
 {
-	uint32_t *blockout;
+#ifndef USE_BATCHES
+	fifo_writer_commit(ppipe->pwriter, ptransfer->dst, ptransfer->size);
+	fifo_reader_pop(ppipe->preader);
+#else
+	uint8_t *blockout = (uint8_t *)ptransfer->dst;
 	struct fifo_bd bd;
 	unsigned int offset_first;
 	struct fifo_reader *preader = ppipe->preader;
@@ -78,56 +79,17 @@ static inline void fifo_pipe_commit_batch(struct fifo_pipe *ppipe, unsigned int 
 	struct bdring_reader *pbdrr = &preader->bdrr;
 	unsigned int i;
 
-	blockout = (uint32_t *)fifo_writer_get_pointer(pwriter);
-
-	/* Commit the first packet */
-	bdring_reader_get(pbdrr, &bd.data);
-	offset_first = bd.offset;
-	fifo_writer_commit_raw(pwriter, (uint8_t *)blockout, bd.size);
-	fifo_reader_pop(preader);
-
-	/* Commit the rest of the packets */
-	for (i = 1; i < batch_count; i++) {
+	/* Commit all packets, but do not advance the write pointer because of alignment */
+	for (i = 0; i < ptransfer->batch_count; i++) {
 		bdring_reader_get(pbdrr, &bd.data);
-		fifo_writer_commit_raw(pwriter, (uint8_t *)blockout + (bd.offset - offset_first), bd.size);
+		if (i == 0) offset_first = bd.offset;
+		fifo_writer_commit_raw(pwriter, blockout + (bd.offset - offset_first), bd.size);
 		fifo_reader_pop(preader);
 	}
 
 	/* Advance the write pointer for the whole batch */
-	fifo_writer_advance(pwriter, batch_size);
-}
+	fifo_writer_advance(pwriter, ptransfer->size);
 #endif // USE_BATCHES
-
-#ifndef USE_BATCHES
-/** @brief Commit a single data transfer into the fifo
- *
- *  The output fifo will be notified of the new data
- *  The input fifo data will be freed
- *
- *  Note: This function should be called after the data has been successfully
- *  transferred into the output fifo.
- *
- *  @param ppipe the fifo_pipe object
- */
-static inline void fifo_pipe_commit_single(struct fifo_pipe *ppipe)
-{
-	struct fifo_reader *preader = ppipe->preader;
-	struct fifo_writer *pwriter = ppipe->pwriter;
-	uint32_t *blockout = (uint32_t *)fifo_writer_get_pointer(pwriter);
-	unsigned int size = fifo_reader_get_size(preader);
-	fifo_writer_commit(pwriter, blockout, size);
-	fifo_reader_pop(preader);
-}
-#endif // USE_BATCHES
-
-//---------------------------------------------------------------------------
-static inline void fifo_pipe_transfer_complete(struct fifo_pipe *ppipe, struct fifo_pipe_transfer *ptransfer)
-{
-#ifdef USE_BATCHES
-	fifo_pipe_commit_batch(ppipe, ptransfer->batch_count, ptransfer->batch_size);
-#else
-	fifo_pipe_commit_single(ppipe);
-#endif
 
 	fifo_reader_wakeup_writer(ppipe->preader, 0);
 	fifo_writer_wakeup_reader(ppipe->pwriter, 0);
@@ -136,10 +98,10 @@ static inline void fifo_pipe_transfer_complete(struct fifo_pipe *ppipe, struct f
 }
 
 //---------------------------------------------------------------------------
-static inline void fifo_pipe_transfer_default(void *dst, const void *src, size_t size, struct fifo_pipe_transfer *ptransfer)
+static inline void fifo_pipe_transfer_default(struct fifo_pipe_transfer *ptransfer)
 {
-	memcpy(dst, src, size);
-	fifo_pipe_transfer_complete(ptransfer->ppipe, ptransfer);
+	memcpy(ptransfer->dst, ptransfer->src, ptransfer->size);
+	fifo_pipe_transfer_commit(ptransfer->ppipe, ptransfer);
 }
 
 /** @brief Transfer as much data as possible from the reader to the writer
@@ -152,12 +114,9 @@ static inline uint32_t fifo_pipe_transfer(struct fifo_pipe *ppipe)
 {
 	struct fifo_reader *preader = ppipe->preader;
 	struct fifo_writer *pwriter = ppipe->pwriter;
-	uint32_t *blockin, *blockout;
-	void *pdummy;
+	void *blockin, *blockout;
 	unsigned int batch_size = 0, batch_size_min, batch_size_max;
-#ifdef USE_BATCHES
 	unsigned int batch_count = 0;
-#endif
 
 	/*
 	 * 1 get minimal size needed by first block in reader
@@ -166,7 +125,7 @@ static inline uint32_t fifo_pipe_transfer(struct fifo_pipe *ppipe)
 	 */
 
 	/* 1 get minimal size needed by first block */
-	batch_size_min = fifo_reader_get(preader, &pdummy);
+	batch_size_min = fifo_reader_get(preader, &blockin);
 	if (batch_size_min == 0)
 		return 0;
 
@@ -189,22 +148,27 @@ static inline uint32_t fifo_pipe_transfer(struct fifo_pipe *ppipe)
 	if (batch_size_max > MAX_BATCH_SIZE)
 		batch_size_max = MAX_BATCH_SIZE;
 
+	/* Not smaller than the minimum batch size */
+	if (batch_size_max < batch_size_min)
+		batch_size_max = batch_size_min;
+
 	/* 3 get maximum number of continuous blocks */
-	blockin  = (uint32_t *)fifo_reader_get_batch(preader, &batch_count, &batch_size, batch_size_max);
+	blockin  = fifo_reader_get_batch(preader, &batch_count, &batch_size, batch_size_max);
 #else
-	blockin = (uint32_t *)fifo_reader_get_pointer(&pin->fifo_reader);
 	batch_size = batch_size_min;
+	batch_count = 1;
 #endif
 	/* Get write pointer */
-	blockout = (uint32_t *)fifo_writer_get_pointer(pwriter);
+	blockout = fifo_writer_get_pointer(pwriter);
 
 	struct fifo_pipe_transfer *ptransfer = (struct fifo_pipe_transfer *)malloc(sizeof(struct fifo_pipe_transfer));
 	ptransfer->ppipe = ppipe;
-	ptransfer->batch_size = batch_size;
-#ifdef USE_BATCHES
+	ptransfer->dst = blockout;
+	ptransfer->src = blockin;
+	ptransfer->size = batch_size;
 	ptransfer->batch_count = batch_count;
-#endif
-	ppipe->fp_transfer(blockout, blockin, batch_size, ptransfer);
+
+	ppipe->fp_transfer(ptransfer);
 
 	return batch_size;
 }
