@@ -83,12 +83,9 @@ static inline void fifo_pipe_transfer_commit(struct fifo_pipe *ppipe, struct fif
 	for (i = 0; i < ptransfer->batch_count; i++) {
 		bdring_reader_get(pbdrr, &bd.data);
 		if (i == 0) offset_first = bd.offset;
-		fifo_writer_commit_raw(pwriter, blockout + (bd.offset - offset_first), bd.size);
+		fifo_writer_commit(pwriter, blockout + (bd.offset - offset_first), bd.size);
 		fifo_reader_pop(preader);
 	}
-
-	/* Advance the write pointer for the whole batch */
-	fifo_writer_advance(pwriter, ptransfer->size);
 #endif // USE_BATCHES
 
 	fifo_reader_wakeup_writer(ppipe->preader, 0);
@@ -169,6 +166,9 @@ static inline uint32_t fifo_pipe_transfer(struct fifo_pipe *ppipe)
 	ptransfer->batch_count = batch_count;
 
 	ppipe->fp_transfer(ptransfer);
+
+	/* Advance the write pointer for the whole batch */
+	fifo_writer_advance(pwriter, batch_size);
 
 	return batch_size;
 }

@@ -198,9 +198,9 @@ static inline unsigned int fifo_writer_get_free_total(struct fifo_writer *pwrite
 }
 
 /**
- * @brief Commit the data into the fifo for the reader to pickup, but don't advance
+ * @brief Commit the data into the fifo for the reader to pickup
  */
-static inline unsigned int fifo_writer_commit_raw(struct fifo_writer *pwriter, void *pdata, unsigned int size)
+static inline unsigned int fifo_writer_commit(struct fifo_writer *pwriter, void *pdata, unsigned int size)
 {
 	struct fifo_bd bd;
 
@@ -233,19 +233,6 @@ static inline unsigned int fifo_writer_advance(struct fifo_writer *pwriter, unsi
 	pwriter->pwrite = pwriter->pwrite + aligned_size;
 
 	return aligned_size;
-}
-
-/**
- * @brief Commit the data into the fifo for the reader to pickup
- *
- * @return The actual amount of bytes advanced (aligned)
- */
-static inline unsigned int fifo_writer_commit(struct fifo_writer *pwriter, void *pdata, unsigned int size)
-{
-	if(fifo_writer_commit_raw(pwriter, pdata, size) == 0)
-		return 0;
-
-	return fifo_writer_advance(pwriter, size);
 }
 
 #ifdef __cplusplus
