@@ -1,17 +1,11 @@
-#include <iostream>
-
 #include "fifo.h"
 #include "fifo_reader.h"
 #include "fifo_writer.h"
 
-#include "testproducer.h"
-#include "testconsumer.h"
+#include "testcommon.h"
 
 
 #define TEST_COUNT (1024*1024*1024)
-
-
-void run_test(struct testproducer * pprod, struct testconsumer * pcons);
 
 
 /*
