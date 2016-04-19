@@ -67,24 +67,25 @@ struct fifo_pipe_transfer
  */
 static inline void fifo_pipe_transfer_commit(struct fifo_pipe *ppipe, struct fifo_pipe_transfer *ptransfer)
 {
-#ifndef USE_BATCHES
-	fifo_writer_commit(ppipe->pwriter, ptransfer->dst, ptransfer->size);
-	fifo_reader_pop(ppipe->preader);
-#else
-	uint8_t *blockout = (uint8_t *)ptransfer->dst;
-	struct fifo_bd bd;
-	unsigned int offset_first;
 	struct fifo_reader *preader = ppipe->preader;
 	struct fifo_writer *pwriter = ppipe->pwriter;
-	struct bdring_reader *pbdrr = &preader->bdrr;
+
+#ifndef USE_BATCHES
+	fifo_writer_commit(pwriter, ptransfer->dst, ptransfer->size);
+	fifo_reader_free(preader);
+#else
+	uint8_t *blockout = (uint8_t *)ptransfer->dst;
+	uint8_t *offset;
+	uint8_t *offset_first;
+	unsigned int size;
 	unsigned int i;
 
-	/* Commit all packets, but do not advance the write pointer because of alignment */
+	/* Commit all packets */
 	for (i = 0; i < ptransfer->batch_count; i++) {
-		bdring_reader_get(pbdrr, &bd.data);
-		if (i == 0) offset_first = bd.offset;
-		fifo_writer_commit(pwriter, blockout + (bd.offset - offset_first), bd.size);
-		fifo_reader_pop(preader);
+		size = fifo_reader_get(preader, (void **)(&offset));
+		if (i == 0) offset_first = offset;
+		fifo_writer_commit(pwriter, blockout + (offset - offset_first), size);
+		fifo_reader_free(preader);
 	}
 #endif // USE_BATCHES
 
@@ -167,8 +168,9 @@ static inline uint32_t fifo_pipe_transfer(struct fifo_pipe *ppipe)
 
 	ppipe->fp_transfer(ptransfer);
 
-	/* Advance the write pointer for the whole batch */
+	/* Advance the read/write pointers for the whole batch */
 	fifo_writer_advance(pwriter, batch_size);
+	fifo_reader_advance(preader, batch_count);
 
 	return batch_size;
 }

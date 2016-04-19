@@ -52,6 +52,7 @@ struct bd
 struct bdring {
 	volatile struct bd *pbd;
 	unsigned int count;
+	unsigned int mask;
 };
 
 /**
@@ -61,6 +62,12 @@ static inline void bdring_init(struct bdring *pbdr, volatile void *pdata, unsign
 {
 	pbdr->pbd = (volatile struct bd *)pdata;
 	pbdr->count = count;
+	pbdr->mask = count - 1;
+}
+
+static inline unsigned int bdring_next(struct bdring *pbdr, unsigned int index)
+{
+	return ((index + 1) & pbdr->mask);
 }
 
 static inline void bdring_clear(struct bdring *pbdr)
@@ -91,79 +98,9 @@ static inline void bdring_bd_put(struct bdring *pbdr, unsigned int idx, uint32_t
 	pbdr->pbd[idx].data = data | BD_USED;
 }
 
-/**
- * @brief Read from a bdring
- */
-struct bdring_reader {
-	struct bdring *pbdr;
-	unsigned int index;
-	unsigned int mask;
-};
-
-/**
- * @brief Initialize the bdring_reader struct
- */
-static inline void bdring_reader_init(struct bdring_reader *pbdrr, struct bdring *pbdr)
+static inline void bdring_bd_clear(struct bdring *pbdr, unsigned int idx)
 {
-	pbdrr->pbdr	= pbdr;
-	pbdrr->index	= 0;
-	pbdrr->mask	= pbdr->count - 1;
-}
-
-static inline int bdring_reader_is_empty(struct bdring_reader *pbdrr)
-{
-	return bdring_bd_is_used(pbdrr->pbdr, pbdrr->index) == 0;
-}
-
-static inline unsigned int bdring_reader_next(struct bdring_reader *pbdrr, unsigned int index)
-{
-	return ((index + 1) & pbdrr->mask);
-}
-
-static inline int bdring_reader_get(struct bdring_reader *pbdrr, uint32_t *pdata)
-{
-	return bdring_bd_get(pbdrr->pbdr, pbdrr->index, pdata);
-}
-
-static inline void bdring_reader_pop(struct bdring_reader *pbdrr)
-{
-	pbdrr->pbdr->pbd[pbdrr->index].data = 0;
-	pbdrr->index = bdring_reader_next(pbdrr, pbdrr->index);
-}
-
-/**
- * @brief Write to a bdring
- */
-struct bdring_writer {
-	struct bdring *pbdr;
-	unsigned int index;
-	unsigned int mask;
-};
-
-/**
- * @brief Initialize the bdring_writer struct
- */
-static inline void bdring_writer_init(struct bdring_writer *pbdrw, struct bdring *pbdr)
-{
-	pbdrw->pbdr	= pbdr;
-	pbdrw->index	= 0;
-	pbdrw->mask	= pbdr->count - 1;
-}
-
-static inline int bdring_writer_is_full(struct bdring_writer *pbdrw)
-{
-	return bdring_bd_is_used(pbdrw->pbdr, pbdrw->index);
-}
-
-static inline unsigned int bdring_writer_next(struct bdring_writer *pbdrw, unsigned int index)
-{
-	return ((index + 1) & pbdrw->mask);
-}
-
-static inline void bdring_writer_put(struct bdring_writer *pbdrw, uint32_t data)
-{
-	bdring_bd_put(pbdrw->pbdr, pbdrw->index, data);
-	pbdrw->index = bdring_writer_next(pbdrw, pbdrw->index);
+	pbdr->pbd[idx].data = 0;
 }
 
 #ifdef __cplusplus

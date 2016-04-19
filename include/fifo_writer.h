@@ -20,7 +20,8 @@ struct fifo_writer
 	uint8_t		*pdata;
 	unsigned int	datasize;
 
-	struct		bdring_writer bdrw;
+	struct bdring	*pbdr;
+	unsigned int	index;
 
 	void		(*do_wakeup_reader)(void *arg);
 	void		*do_wakeup_reader_arg;
@@ -40,11 +41,12 @@ struct fifo_writer
  */
 static inline void fifo_writer_init(struct fifo_writer *pwriter, struct fifo *pfifo)
 {
-	bdring_writer_init(&pwriter->bdrw, &pfifo->bdr);
-
 	pwriter->pfifo = pfifo;
 	pwriter->pdata = pfifo->pdata;
 	pwriter->datasize = pfifo->pheader->datasize;
+
+	pwriter->pbdr = &pfifo->bdr;
+	pwriter->index = 0;
 
 	pwriter->do_wakeup_reader = NULL;
 	pwriter->do_wakeup_reader_arg = NULL;
@@ -72,14 +74,13 @@ static inline unsigned int _fifo_writer_align_up(struct fifo_writer *pwriter, un
  */
 static inline void _fifo_writer_get_reader(struct fifo_writer *pwriter, unsigned int *poffset, unsigned int *psize)
 {
-	struct bdring_writer *pbdrw = &pwriter->bdrw;
 	struct fifo_bd bd;
 	unsigned int *plast_reader_idx = &pwriter->bdring_last_reader_idx;
 	unsigned int idx;
 
 	/* Try to find where the reader is */
-	for (idx = *plast_reader_idx; idx != pbdrw->index; idx = bdring_writer_next(pbdrw, idx)) {
-		if (bdring_bd_get(pbdrw->pbdr, idx, &bd.data)) {
+	for (idx = *plast_reader_idx; idx != pwriter->index; idx = bdring_next(pwriter->pbdr, idx)) {
+		if (bdring_bd_get(pwriter->pbdr, idx, &bd.data)) {
 			*plast_reader_idx = idx;
 			*poffset = bd.offset;
 			*psize   = bd.size;
@@ -88,8 +89,8 @@ static inline void _fifo_writer_get_reader(struct fifo_writer *pwriter, unsigned
 	}
 
 	/* Reader is at the same location as the writer, so we are full, or empty */
-	*plast_reader_idx = pbdrw->index;
-	if (bdring_bd_get(pbdrw->pbdr, pbdrw->index, &bd.data)) {
+	*plast_reader_idx = pwriter->index;
+	if (bdring_bd_get(pwriter->pbdr, pwriter->index, &bd.data)) {
 		/* full */
 		*poffset = bd.offset;
 		*psize   = bd.size;
@@ -215,13 +216,14 @@ static inline unsigned int fifo_writer_commit(struct fifo_writer *pwriter, void 
 	bd.offset = (uint8_t *)pdata - pwriter->pdata;
 	bd.size   = size;
 
-	bdring_writer_put(&pwriter->bdrw, bd.data);
+	bdring_bd_put(pwriter->pbdr, pwriter->index, bd.data);
+	pwriter->index = bdring_next(pwriter->pbdr, pwriter->index);
 
 	return size;
 }
 
 /**
- * @brief Advance the write pointer
+ * @brief Advance the write pointer, but do not commit the data to the reader
  *
  * @return The actual amount of bytes advanced (aligned)
  */

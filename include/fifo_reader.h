@@ -20,7 +20,8 @@ struct fifo_reader
 	uint8_t		*pdata;
 	unsigned int	datasize;
 
-	struct		bdring_reader bdrr;
+	struct bdring	*pbdr;
+	unsigned int	index;
 
 	void		(*do_wakeup_writer)(void *arg);
 	void		*do_wakeup_writer_arg;
@@ -31,11 +32,12 @@ struct fifo_reader
  */
 static inline void fifo_reader_init(struct fifo_reader *preader, struct fifo *pfifo)
 {
-	bdring_reader_init(&preader->bdrr, &pfifo->bdr);
-
 	preader->pfifo = pfifo;
 	preader->pdata = pfifo->pdata;
 	preader->datasize = pfifo->pheader->datasize;
+
+	preader->pbdr = &pfifo->bdr;
+	preader->index = 0;
 
 	preader->do_wakeup_writer = NULL;
 	preader->do_wakeup_writer_arg = NULL;
@@ -48,15 +50,12 @@ static inline void * fifo_reader_get_batch(struct fifo_reader *preader, unsigned
 {
 	unsigned int offset_first;
 	unsigned int temp_size;
-	unsigned int index;
-	struct bdring_reader *pbdrr;
+	unsigned int index = preader->index;
+	struct bdring *pbdr = preader->pbdr;
 	struct fifo_bd bd;
 
-	pbdrr = &preader->bdrr;
-	index = pbdrr->index;
-
 	/* Get first BD */
-	if (bdring_bd_get(pbdrr->pbdr, index, &bd.data) == 0)
+	if (bdring_bd_get(pbdr, index, &bd.data) == 0)
 		return NULL;
 
 	if (bd.size > batch_size_max)
@@ -68,8 +67,8 @@ static inline void * fifo_reader_get_batch(struct fifo_reader *preader, unsigned
 	*batch_size = bd.size;
 
 	/* Find all continuous data */
-	index = bdring_reader_next(pbdrr, index);
-	while (bdring_bd_get(pbdrr->pbdr, index, &bd.data)) {
+	index = bdring_next(pbdr, index);
+	while (bdring_bd_get(pbdr, index, &bd.data)) {
 
 		if (bd.offset <= offset_first)
 			break; // not continuous
@@ -81,7 +80,7 @@ static inline void * fifo_reader_get_batch(struct fifo_reader *preader, unsigned
 		(*batch_count)++;
 		*batch_size = temp_size;
 
-		index = bdring_reader_next(pbdrr, index);
+		index = bdring_next(pbdr, index);
 
 	}
 
@@ -93,7 +92,7 @@ static inline void * fifo_reader_get_batch(struct fifo_reader *preader, unsigned
  */
 static inline void fifo_reader_clear(struct fifo_reader *preader)
 {
-	bdring_clear(preader->bdrr.pbdr);
+	bdring_clear(preader->pbdr);
 }
 
 /**
@@ -118,7 +117,7 @@ static inline void fifo_reader_wakeup_writer(struct fifo_reader *preader, unsign
  */
 static inline int fifo_reader_is_empty(struct fifo_reader *preader)
 {
-	return bdring_reader_is_empty(&preader->bdrr);
+	return bdring_bd_is_used(preader->pbdr, preader->index) == 0;
 }
 
 /**
@@ -128,7 +127,7 @@ static inline unsigned int fifo_reader_get(struct fifo_reader *preader, void ** 
 {
 	struct fifo_bd bd;
 
-	bdring_reader_get(&preader->bdrr, &bd.data);
+	bdring_bd_get(preader->pbdr, preader->index, &bd.data);
 
 	if (pdata != NULL)
 		*pdata = (bd.size == 0) ? NULL : (preader->pdata + bd.offset);
@@ -137,11 +136,20 @@ static inline unsigned int fifo_reader_get(struct fifo_reader *preader, void ** 
 }
 
 /**
- * @brief Pop the first packet, this frees the data for the writer
+ * @brief Free packets, so the writer can use them again
  */
-static inline void fifo_reader_pop(struct fifo_reader *preader)
+static inline void fifo_reader_free(struct fifo_reader *preader)
 {
-	bdring_reader_pop(&preader->bdrr);
+	bdring_bd_clear(preader->pbdr, preader->index);
+}
+
+/**
+ * @brief Advance the read index, but do not free the data to the writer
+ */
+static inline void fifo_reader_advance(struct fifo_reader *preader, unsigned int count)
+{
+	while(count--)
+		preader->index = bdring_next(preader->pbdr, preader->index);
 }
 
 #ifdef __cplusplus
