@@ -21,7 +21,8 @@ struct fifo_reader
 	unsigned int	datasize;
 
 	struct bdring	*pbdr;
-	unsigned int	index;
+	unsigned int	first_index;
+	unsigned int	last_index;
 
 	void		(*do_wakeup_writer)(void *arg);
 	void		*do_wakeup_writer_arg;
@@ -37,20 +38,20 @@ static inline void fifo_reader_init(struct fifo_reader *preader, struct fifo *pf
 	preader->datasize = pfifo->pheader->datasize;
 
 	preader->pbdr = &pfifo->bdr;
-	preader->index = 0;
+	preader->first_index = 0;
+	preader->last_index = 0;
 
 	preader->do_wakeup_writer = NULL;
 	preader->do_wakeup_writer_arg = NULL;
 }
 
-/**
- * @brief Try to get the most blocks, fitting into "batch_size_max"
+/*
+ * Private function
  */
-static inline void * fifo_reader_get_batch(struct fifo_reader *preader, unsigned int *batch_count, unsigned int *batch_size, unsigned int batch_size_max)
+static inline void * _fifo_reader_get_batch(struct fifo_reader *preader, unsigned int *batch_count, unsigned int *batch_size, unsigned int batch_size_max, unsigned int index)
 {
 	unsigned int offset_first;
 	unsigned int temp_size;
-	unsigned int index = preader->index;
 	struct bdring *pbdr = preader->pbdr;
 	struct fifo_bd bd;
 
@@ -88,6 +89,26 @@ static inline void * fifo_reader_get_batch(struct fifo_reader *preader, unsigned
 }
 
 /**
+ * @brief Try to get the most blocks, fitting into "batch_size_max"
+ *
+ * NOTE: Staring at the first index
+ */
+static inline void * fifo_reader_get_batch_first(struct fifo_reader *preader, unsigned int *batch_count, unsigned int *batch_size, unsigned int batch_size_max)
+{
+	return _fifo_reader_get_batch(preader, batch_count, batch_size, batch_size_max, preader->first_index);
+}
+
+/**
+ * @brief Try to get the most blocks, fitting into "batch_size_max"
+ *
+ * NOTE: Staring at the last index
+ */
+static inline void * fifo_reader_get_batch_last(struct fifo_reader *preader, unsigned int *batch_count, unsigned int *batch_size, unsigned int batch_size_max)
+{
+	return _fifo_reader_get_batch(preader, batch_count, batch_size, batch_size_max, preader->last_index);
+}
+
+/**
  * @brief Clear the entire fifo
  */
 static inline void fifo_reader_clear(struct fifo_reader *preader)
@@ -117,17 +138,17 @@ static inline void fifo_reader_wakeup_writer(struct fifo_reader *preader, unsign
  */
 static inline int fifo_reader_is_empty(struct fifo_reader *preader)
 {
-	return bdring_bd_is_used(preader->pbdr, preader->index) == 0;
+	return bdring_bd_is_used(preader->pbdr, preader->first_index) == 0;
 }
 
-/**
- * @brief Get the first packet if there is one
+/*
+ * Private function
  */
-static inline unsigned int fifo_reader_get(struct fifo_reader *preader, void ** pdata)
+static inline unsigned int _fifo_reader_get(struct fifo_reader *preader, void ** pdata, unsigned int index)
 {
 	struct fifo_bd bd;
 
-	bdring_bd_get(preader->pbdr, preader->index, &bd.data);
+	bdring_bd_get(preader->pbdr, index, &bd.data);
 
 	if (pdata != NULL)
 		*pdata = (bd.size == 0) ? NULL : (preader->pdata + bd.offset);
@@ -136,20 +157,37 @@ static inline unsigned int fifo_reader_get(struct fifo_reader *preader, void ** 
 }
 
 /**
+ * @brief Get the first packet if there is one
+ */
+static inline unsigned int fifo_reader_get_first(struct fifo_reader *preader, void ** pdata)
+{
+	return _fifo_reader_get(preader, pdata, preader->first_index);
+}
+
+/**
+ * @brief Get the last packet if there is one
+ */
+static inline unsigned int fifo_reader_get_last(struct fifo_reader *preader, void ** pdata)
+{
+	return _fifo_reader_get(preader, pdata, preader->last_index);
+}
+
+/**
  * @brief Free packets, so the writer can use them again
  */
 static inline void fifo_reader_free(struct fifo_reader *preader)
 {
-	bdring_bd_clear(preader->pbdr, preader->index);
+	bdring_bd_clear(preader->pbdr, preader->first_index);
+	preader->first_index = bdring_next(preader->pbdr, preader->first_index);
 }
 
 /**
- * @brief Advance the read index, but do not free the data to the writer
+ * @brief Advance the last index, but do not free the data to the writer
  */
-static inline void fifo_reader_advance(struct fifo_reader *preader, unsigned int count)
+static inline void fifo_reader_advance_last(struct fifo_reader *preader, unsigned int count)
 {
 	while(count--)
-		preader->index = bdring_next(preader->pbdr, preader->index);
+		preader->last_index = bdring_next(preader->pbdr, preader->last_index);
 }
 
 #ifdef __cplusplus
