@@ -4,6 +4,7 @@
 #include "fifo_pipe.h"
 
 #include "testcommon.h"
+#include "cdmasim.h"
 
 
 #define TEST_COUNT (1024*1024*1024)
@@ -22,6 +23,19 @@
  *   9 - cons			(testconsumer)
  */
 
+
+//---------------------------------------------------------------------------
+static void fifo_pipe_transfer_async_complete(void * arg)
+{
+	struct fifo_pipe_transfer *ptransfer = (struct fifo_pipe_transfer *)arg;
+	fifo_pipe_transfer_commit(ptransfer->ppipe, ptransfer);
+}
+
+//---------------------------------------------------------------------------
+static void fifo_pipe_transfer_async(struct fifo_pipe_transfer *ptransfer)
+{
+	dma1.put(ptransfer->dst, ptransfer->src, ptransfer->size, fifo_pipe_transfer_async_complete, ptransfer);
+}
 
 //---------------------------------------------------------------------------
 void
@@ -70,6 +84,7 @@ test02()
 	fifo_writer1.do_wakeup_reader_arg = &fifo_pipe12;
 	//fifo_reader2.do_wakeup_writer = do_wakeup_pipe;
 	//fifo_reader2.do_wakeup_writer_arg = &fifo_pipe12;
+	fifo_pipe12.fp_transfer = fifo_pipe_transfer_async;
 
 	// Init test
 	testproducer_init(&prod, &fifo_writer1, TEST_COUNT);
