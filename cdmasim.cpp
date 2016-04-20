@@ -59,6 +59,8 @@ CDMASim::mainloop()
 		memcpy(pdmaop->dst, pdmaop->src, pdmaop->size);
 		if (pdmaop->fp_compl != NULL)
 			pdmaop->fp_compl(pdmaop->fp_compl_arg);
+
+		delete pdmaop;
 	}
 }
 
@@ -69,9 +71,9 @@ CDMASim::get()
 	SDMAOperation * pdmaop;
 
 	std::unique_lock<std::mutex> locker(mutex);
-	cv.wait(locker, [this]{return (!queue.empty() || bExit);});
+	cv.wait(locker, [this]{return (!queue.empty() || (queue.empty() && bExit));});
 
-	if (bExit)
+	if (queue.empty() && bExit)
 		return NULL;
 
 	pdmaop = queue.front();
@@ -85,6 +87,9 @@ void
 CDMASim::put(SDMAOperation * pdmaop)
 {
 	std::unique_lock<std::mutex> locker(mutex);
+
+	if (bExit)
+		return;
 
 	queue.push_back(pdmaop);
 
