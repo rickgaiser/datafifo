@@ -18,15 +18,12 @@ CDMASim::CDMASim(const char * sName)
 //---------------------------------------------------------------------------
 CDMASim::~CDMASim()
 {
-	std::cout<<sName<<" stopping"<<std::endl;
 	{
 		std::unique_lock<std::mutex> locker(mutex);
 		bExit = true;
 		cv.notify_all();
 	}
-	std::cout<<sName<<" waiting"<<std::endl;
 	thr.join();
-	std::cout<<sName<<" stopped"<<std::endl;
 }
 
 //---------------------------------------------------------------------------
@@ -62,6 +59,8 @@ CDMASim::mainloop()
 
 		delete pdmaop;
 	}
+
+	std::cout<<sName<<" stopping"<<std::endl;
 }
 
 //---------------------------------------------------------------------------
