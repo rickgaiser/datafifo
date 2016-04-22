@@ -24,8 +24,8 @@ struct fifo_reader
 	unsigned int	index_claimed; // points to the first index that is claimed
 	unsigned int	index_read;    // points to the first index to be read or claimed
 
-	void		(*do_wakeup_writer)(void *arg);
-	void		*do_wakeup_writer_arg;
+	fifo_wakeup_handler wakeup_handler;
+	void		*wakeup_handler_arg;
 };
 
 /**
@@ -41,8 +41,17 @@ static inline void fifo_reader_init(struct fifo_reader *preader, struct fifo *pf
 	preader->index_claimed = 0;
 	preader->index_read = 0;
 
-	preader->do_wakeup_writer = NULL;
-	preader->do_wakeup_writer_arg = NULL;
+	preader->wakeup_handler = NULL;
+	preader->wakeup_handler_arg = NULL;
+}
+
+/**
+ * @brief Set a wakeup handler to be called when the reader wants to wakeup the writer
+ */
+static inline void fifo_reader_set_wakeup_handler(struct fifo_reader *preader, fifo_wakeup_handler wakeup_handler, void *wakeup_handler_arg)
+{
+	preader->wakeup_handler = wakeup_handler;
+	preader->wakeup_handler_arg = wakeup_handler_arg;
 }
 
 /**
@@ -105,11 +114,11 @@ static inline void fifo_reader_clear(struct fifo_reader *preader)
  */
 static inline void fifo_reader_wakeup_writer(struct fifo_reader *preader, unsigned int force)
 {
-	if (preader->do_wakeup_writer == NULL)
+	if (preader->wakeup_handler == NULL)
 		return;
 
 	if ((force) || (preader->pfifo->pheader->writer_status & WR_STS_WAITING))
-		preader->do_wakeup_writer(preader->do_wakeup_writer_arg);
+		preader->wakeup_handler(preader->wakeup_handler_arg);
 }
 
 /**

@@ -24,8 +24,8 @@ struct fifo_writer
 	unsigned int	index_claimed; // points to the first index that is claimed
 	unsigned int	index_write;   // points to the first index to be written or claimed
 
-	void		(*do_wakeup_reader)(void *arg);
-	void		*do_wakeup_reader_arg;
+	fifo_wakeup_handler wakeup_handler;
+	void		*wakeup_handler_arg;
 
 	unsigned int	freesize;
 	unsigned int	freesize_next;
@@ -50,8 +50,8 @@ static inline void fifo_writer_init(struct fifo_writer *pwriter, struct fifo *pf
 	pwriter->index_claimed = 0;
 	pwriter->index_write = 0;
 
-	pwriter->do_wakeup_reader = NULL;
-	pwriter->do_wakeup_reader_arg = NULL;
+	pwriter->wakeup_handler = NULL;
+	pwriter->wakeup_handler_arg = NULL;
 
 	pwriter->freesize = pwriter->datasize;
 	pwriter->freesize_next = 0;
@@ -61,6 +61,15 @@ static inline void fifo_writer_init(struct fifo_writer *pwriter, struct fifo *pf
 	pwriter->plast_read = pwriter->pdata - 1;
 
 	pwriter->align_bits = pfifo->pheader->align-1;
+}
+
+/**
+ * @brief Set a wakeup handler to be called when the writer wants to wakeup the reader
+ */
+static inline void fifo_writer_set_wakeup_handler(struct fifo_writer *pwriter, fifo_wakeup_handler wakeup_handler, void *wakeup_handler_arg)
+{
+	pwriter->wakeup_handler = wakeup_handler;
+	pwriter->wakeup_handler_arg = wakeup_handler_arg;
 }
 
 /*
@@ -157,11 +166,11 @@ static inline void fifo_writer_update_reader(struct fifo_writer *pwriter)
  */
 static inline void fifo_writer_wakeup_reader(struct fifo_writer *pwriter, unsigned int force)
 {
-	if (pwriter->do_wakeup_reader == NULL)
+	if (pwriter->wakeup_handler == NULL)
 		return;
 
 	if ((force) || (pwriter->pfifo->pheader->reader_status & RD_STS_WAITING))
-		pwriter->do_wakeup_reader(pwriter->do_wakeup_reader_arg);
+		pwriter->wakeup_handler(pwriter->wakeup_handler_arg);
 }
 
 /**

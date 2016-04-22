@@ -76,10 +76,8 @@ test02()
 
 	// Create and hookup thread for pipe 12
 	CPipe cpipe12("Pipe12", &fifo_pipe12);
-	fifo1_writer.do_wakeup_reader = CPipe::wakeup;
-	fifo1_writer.do_wakeup_reader_arg = &cpipe12;
-	fifo2_reader.do_wakeup_writer = CPipe::wakeup;
-	fifo2_reader.do_wakeup_writer_arg = &cpipe12;
+	fifo_writer_set_wakeup_handler(&fifo1_writer, CPipe::wakeup, &cpipe12);
+	fifo_reader_set_wakeup_handler(&fifo2_reader, CPipe::wakeup, &cpipe12);
 
 	// Init test
 	testproducer_init(&prod, &fifo1_writer, TEST_COUNT);

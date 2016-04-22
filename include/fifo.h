@@ -22,6 +22,9 @@
 extern "C" {
 #endif
 
+/* Used by the fifo_reader and fifo_writer */
+typedef void (*fifo_wakeup_handler)(void * arg);
+
 #define FIFO_SIZE		(64*1024)
 #define FIFO_BD_COUNT		(128)
 
