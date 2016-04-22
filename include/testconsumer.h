@@ -50,7 +50,7 @@ static inline unsigned int testconsumer_consume_one(struct testconsumer *pcons)
 	unsigned int size32;
 	struct fifo_reader *preader = pcons->preader;
 
-	size = fifo_reader_get_first(preader, (void **)&block);
+	size = fifo_reader_get(preader, (void **)&block);
 	if (size < sizeof(uint32_t))
 		return 0;
 
@@ -58,6 +58,9 @@ static inline unsigned int testconsumer_consume_one(struct testconsumer *pcons)
 	size32 = size / sizeof(uint32_t);
 	if (size32 > (pcons->count32 - pcons->actual32))
 		size32 = pcons->count32 - pcons->actual32;
+
+	// Claim the block
+	fifo_reader_claim(preader, 1, size);
 
 	// Read from data block
 	for (idx = 0; idx < size32; idx++)

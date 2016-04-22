@@ -59,6 +59,9 @@ static inline unsigned int testproducer_produce_one(struct testproducer *pprod)
 	// Get data pointer
 	block = (uint32_t *)fifo_writer_get_pointer(pwriter);
 
+	// Claim the block
+	fifo_writer_claim(pwriter, 1, size);
+
 	// Write to data block
 	for (idx = 0; idx < size32; idx++)
 		block[idx] = pprod->actual32++;

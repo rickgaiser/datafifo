@@ -21,7 +21,8 @@ struct fifo_writer
 	unsigned int	datasize;
 
 	struct bdring	*pbdr;
-	unsigned int	index;
+	unsigned int	index_claimed; // points to the first index that is claimed
+	unsigned int	index_write;   // points to the first index to be written or claimed
 
 	void		(*do_wakeup_reader)(void *arg);
 	void		*do_wakeup_reader_arg;
@@ -46,7 +47,8 @@ static inline void fifo_writer_init(struct fifo_writer *pwriter, struct fifo *pf
 	pwriter->datasize = pfifo->pheader->datasize;
 
 	pwriter->pbdr = &pfifo->bdr;
-	pwriter->index = 0;
+	pwriter->index_claimed = 0;
+	pwriter->index_write = 0;
 
 	pwriter->do_wakeup_reader = NULL;
 	pwriter->do_wakeup_reader_arg = NULL;
@@ -79,7 +81,7 @@ static inline void _fifo_writer_get_reader(struct fifo_writer *pwriter, unsigned
 	unsigned int idx;
 
 	/* Try to find where the reader is */
-	for (idx = *plast_reader_idx; idx != pwriter->index; idx = bdring_next(pwriter->pbdr, idx)) {
+	for (idx = *plast_reader_idx; idx != pwriter->index_claimed; idx = bdring_next(pwriter->pbdr, idx)) {
 		if (bdring_bd_get(pwriter->pbdr, idx, &bd.data)) {
 			*plast_reader_idx = idx;
 			*poffset = bd.offset;
@@ -89,8 +91,8 @@ static inline void _fifo_writer_get_reader(struct fifo_writer *pwriter, unsigned
 	}
 
 	/* Reader is at the same location as the writer, so we are full, or empty */
-	*plast_reader_idx = pwriter->index;
-	if (bdring_bd_get(pwriter->pbdr, pwriter->index, &bd.data)) {
+	*plast_reader_idx = pwriter->index_claimed;
+	if (bdring_bd_get(pwriter->pbdr, pwriter->index_claimed, &bd.data)) {
 		/* full */
 		*poffset = bd.offset;
 		*psize   = bd.size;
@@ -132,12 +134,18 @@ static inline void fifo_writer_update_reader(struct fifo_writer *pwriter)
 			pwriter->freesize_next = pwriter->plast_read - pwriter->pdata;
 		}
 	}
-	else {
+	else if (pwriter->index_claimed == pwriter->index_write) {
 		/* Empty, reset */
 		pwriter->freesize = pwriter->datasize;
 		pwriter->freesize_next = 0;
 		pwriter->pwrite = pwriter->pdata;
 		pwriter->plast_read = pwriter->pdata - 1;
+	}
+	else {
+		/*
+		 * FIXME: Claimed packets are not yet committed.
+		 *        What is the reader position?
+		 */
 	}
 }
 
@@ -216,25 +224,34 @@ static inline unsigned int fifo_writer_commit(struct fifo_writer *pwriter, void 
 	bd.offset = (uint8_t *)pdata - pwriter->pdata;
 	bd.size   = size;
 
-	bdring_bd_put(pwriter->pbdr, pwriter->index, bd.data);
-	pwriter->index = bdring_next(pwriter->pbdr, pwriter->index);
+	// Commit the data to the reader
+	bdring_bd_put(pwriter->pbdr, pwriter->index_claimed, bd.data);
+
+	if (pwriter->index_claimed == pwriter->index_write) {
+		// Advance both indices
+		pwriter->index_claimed = bdring_next(pwriter->pbdr, pwriter->index_claimed);
+		pwriter->index_write = pwriter->index_claimed;
+	}
+	else {
+		// Advance the read index only
+		pwriter->index_claimed = bdring_next(pwriter->pbdr, pwriter->index_claimed);
+	}
 
 	return size;
 }
 
 /**
  * @brief Advance the write pointer, but do not commit the data to the reader
- *
- * @return The actual amount of bytes advanced (aligned)
  */
-static inline unsigned int fifo_writer_advance(struct fifo_writer *pwriter, unsigned int size)
+static inline void fifo_writer_claim(struct fifo_writer *pwriter, unsigned int count, unsigned int size)
 {
 	unsigned int aligned_size = _fifo_writer_align_up(pwriter, size);
 
 	pwriter->freesize -= aligned_size;
-	pwriter->pwrite = pwriter->pwrite + aligned_size;
+	pwriter->pwrite   += aligned_size;
 
-	return aligned_size;
+	while(count--)
+		pwriter->index_write = bdring_next(pwriter->pbdr, pwriter->index_write);
 }
 
 #ifdef __cplusplus

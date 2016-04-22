@@ -82,15 +82,15 @@ static inline void fifo_pipe_transfer_commit(struct fifo_pipe *ppipe, struct fif
 
 	/* Commit all packets */
 	for (i = 0; i < ptransfer->batch_count; i++) {
-		size = fifo_reader_get_first(preader, (void **)(&offset));
+		size = fifo_reader_get_claim(preader, (void **)(&offset));
 		if (i == 0) offset_first = offset;
 		fifo_writer_commit(pwriter, blockout + (offset - offset_first), size);
 		fifo_reader_free(preader);
 	}
 #endif // USE_BATCHES
 
-	fifo_reader_wakeup_writer(ppipe->preader, 0);
-	fifo_writer_wakeup_reader(ppipe->pwriter, 0);
+	fifo_reader_wakeup_writer(preader, 0);
+	fifo_writer_wakeup_reader(pwriter, 0);
 
 	free(ptransfer);
 }
@@ -123,7 +123,7 @@ static inline uint32_t fifo_pipe_transfer(struct fifo_pipe *ppipe)
 	 */
 
 	/* 1 get minimal size needed by first block */
-	batch_size_min = fifo_reader_get_last(preader, &blockin);
+	batch_size_min = fifo_reader_get(preader, &blockin);
 	if (batch_size_min == 0)
 		return 0;
 
@@ -151,7 +151,7 @@ static inline uint32_t fifo_pipe_transfer(struct fifo_pipe *ppipe)
 		batch_size_max = batch_size_min;
 
 	/* 3 get maximum number of continuous blocks */
-	blockin  = fifo_reader_get_batch_last(preader, &batch_count, &batch_size, batch_size_max);
+	blockin  = fifo_reader_get_batch(preader, &batch_count, &batch_size, batch_size_max);
 #else
 	batch_size = batch_size_min;
 	batch_count = 1;
@@ -166,11 +166,12 @@ static inline uint32_t fifo_pipe_transfer(struct fifo_pipe *ppipe)
 	ptransfer->size = batch_size;
 	ptransfer->batch_count = batch_count;
 
-	ppipe->fp_transfer(ptransfer);
+	/* Claim the packets in both fifo's */
+	fifo_writer_claim(pwriter, batch_count, batch_size);
+	fifo_reader_claim(preader, batch_count, batch_size);
 
-	/* Advance the read/write pointers for the whole batch */
-	fifo_writer_advance(pwriter, batch_size);
-	fifo_reader_advance_last(preader, batch_count);
+	/* Transter the data, possibly async */
+	ppipe->fp_transfer(ptransfer);
 
 	return batch_size;
 }
