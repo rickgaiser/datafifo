@@ -10,11 +10,11 @@
 
 /*
  * Datapath in this test:
- *   1 - prod			(testproducer)
+ *   1 - prod			(testproducer)	thread
  *   2 - fifo_writer		(fifo_writer)
  *   3 - fifo			(fifo)
  *   4 - fifo_reader		(fifo_reader)
- *   5 - cons			(testconsumer)
+ *   5 - cons			(testconsumer)	thread
  */
 
 

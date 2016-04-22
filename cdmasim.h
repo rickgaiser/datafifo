@@ -23,7 +23,7 @@ struct SDMAOperation
 class CDMASim
 {
 public:
-	CDMASim(const char * sName = "DMA engine");
+	CDMASim(const char * sName);
 	~CDMASim();
 
 	void put(void *dst, const void *src, size_t size, fp_dma_completion_callback fp_compl = NULL, void * compl_arg = NULL);
@@ -39,9 +39,10 @@ private:
 	std::thread thr;
 	volatile bool bExit;
 
-	std::list<SDMAOperation *> queue;
 	std::mutex mutex;
 	std::condition_variable	cv;
+
+	std::list<SDMAOperation *> queue;
 };
 
 

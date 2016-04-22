@@ -47,7 +47,7 @@ CDMASim::mainloop()
 {
 	std::cout<<sName<<" running"<<std::endl;
 
-	while(true)
+	while(bExit == false)
 	{
 		SDMAOperation * pdmaop = get();
 		if (pdmaop == NULL)

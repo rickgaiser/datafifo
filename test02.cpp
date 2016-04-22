@@ -7,6 +7,7 @@
 
 #include "testcommon.h"
 #include "cdmasim.h"
+#include "cpipe.h"
 
 
 #define TEST_COUNT (1024*1024*1024)
@@ -14,25 +15,17 @@
 
 /*
  * Datapath in this test:
- *   1 - prod			(testproducer)
+ *   1 - prod			(testproducer)	thread
  *   2 - fifo1_writer		(fifo_writer)
  *   3 - fifo1			(fifo)
  *   4 - fifo1_reader		(fifo_reader)
- *   5 - fifo_pipe12		(fifo_pipe)
+ *   5 - fifo_pipe12		(fifo_pipe)	thread
  *   6 - fifo2_writer		(fifo_writer)
  *   7 - fifo2			(fifo)
  *   8 - fifo2_reader		(fifo_reader)
- *   9 - cons			(testconsumer)
+ *   9 - cons			(testconsumer)	thread
  */
 
-
-//---------------------------------------------------------------------------
-void
-fifo_pipe_fill(struct fifo_pipe * ppipe)
-{
-	while(fifo_pipe_transfer(ppipe) > 1)
-		;
-}
 
 //---------------------------------------------------------------------------
 static void fifo_pipe_transfer_async_complete(void * arg)
@@ -45,37 +38,6 @@ static void fifo_pipe_transfer_async_complete(void * arg)
 static void fifo_pipe_transfer_async(struct fifo_pipe_transfer *ptransfer)
 {
 	dma1.put(ptransfer->dst, ptransfer->src, ptransfer->size, fifo_pipe_transfer_async_complete, ptransfer);
-}
-
-//---------------------------------------------------------------------------
-std::mutex pipe_mutex;
-std::condition_variable	pipe_cv;
-volatile bool bPipeExit;
-//---------------------------------------------------------------------------
-static void thr_fifo_pipe_wait()
-{
-	std::unique_lock<std::mutex> locker(pipe_mutex);
-	pipe_cv.wait(locker);
-}
-
-//---------------------------------------------------------------------------
-static void thr_fifo_pipe_wakeup(void * arg)
-{
-	std::unique_lock<std::mutex> locker(pipe_mutex);
-	pipe_cv.notify_one();
-}
-
-//---------------------------------------------------------------------------
-static void thr_fifo_pipe(struct fifo_pipe * ppipe)
-{
-	std::cout<<"Pipe running"<<std::endl;
-
-	while(bPipeExit == false) {
-		fifo_pipe_fill(ppipe);
-		thr_fifo_pipe_wait();
-	}
-
-	std::cout<<"Pipe stopping"<<std::endl;
 }
 
 //---------------------------------------------------------------------------
@@ -113,27 +75,19 @@ test02()
 	fifo_pipe_init(&fifo_pipe12, &fifo1_reader, &fifo2_writer);
 	fifo_pipe12.fp_transfer = fifo_pipe_transfer_async;
 
-	// Setup callbacks to activate the pipe
-	fifo1_writer.do_wakeup_reader = thr_fifo_pipe_wakeup;
-	fifo1_writer.do_wakeup_reader_arg = &fifo_pipe12;
-	fifo2_reader.do_wakeup_writer = thr_fifo_pipe_wakeup;
-	fifo2_reader.do_wakeup_writer_arg = &fifo_pipe12;
+	// Create and hookup thread for pipe
+	CPipe cpipe("Pipe", &fifo_pipe12);
+	fifo1_writer.do_wakeup_reader = CPipe::wakeup;
+	fifo1_writer.do_wakeup_reader_arg = &cpipe;
+	fifo2_reader.do_wakeup_writer = CPipe::wakeup;
+	fifo2_reader.do_wakeup_writer_arg = &cpipe;
 
 	// Init test
 	testproducer_init(&prod, &fifo1_writer, TEST_COUNT);
 	testconsumer_init(&cons, &fifo2_reader, TEST_COUNT);
 
-	// Start pipe thread
-	bPipeExit = false;
-	std::thread thr_pipe(thr_fifo_pipe, &fifo_pipe12);
-
 	// Run the test
 	run_test(&prod, &cons);
-
-	// Stop the pipe thread
-	bPipeExit = true;
-	thr_fifo_pipe_wakeup(&fifo_pipe12);
-	thr_pipe.join();
 
 	// Cleanup
 	delete[] databuffer1;
