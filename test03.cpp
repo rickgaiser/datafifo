@@ -10,9 +10,6 @@
 #include "cpipe.h"
 
 
-#define TEST_COUNT (1024*1024*1024)
-
-
 /*
  * Test 03: Simulate a looptest on the Playstation 2
  *

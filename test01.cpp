@@ -5,9 +5,6 @@
 #include "testcommon.h"
 
 
-#define TEST_COUNT (1024*1024*1024)
-
-
 /*
  * Test 01: Simple test with one fifo
  *

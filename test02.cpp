@@ -10,9 +10,6 @@
 #include "cpipe.h"
 
 
-#define TEST_COUNT (1024*1024*1024)
-
-
 /*
  * Test 02: Pipe data from one fifo to another using DMA
  *

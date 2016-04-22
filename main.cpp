@@ -1,8 +1,6 @@
 #include <iostream>
 #include <chrono>
 
-#include "testcommon.h"
-
 
 using std::chrono::time_point;
 using std::chrono::system_clock;
