@@ -9,12 +9,14 @@
 
 
 /*
+ * Test 01: Simple test with one fifo
+ *
  * Datapath in this test:
- *   1 - prod			(testproducer)	thread
+ *   1 - prod			(testproducer)	thread producing data
  *   2 - fifo_writer		(fifo_writer)
  *   3 - fifo			(fifo)
  *   4 - fifo_reader		(fifo_reader)
- *   5 - cons			(testconsumer)	thread
+ *   5 - cons			(testconsumer)	thread consuming data
  */
 
 

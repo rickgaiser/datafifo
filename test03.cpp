@@ -14,37 +14,50 @@
 
 
 /*
- * Test 02: Pipe data from one fifo to another using DMA
+ * Test 03: Simulate a looptest on the Playstation 2
  *
  * Datapath in this test:
+ * EE:
  *   1 - prod			(testproducer)	thread producing data
  *   2 - fifo1_writer		(fifo_writer)
  *   3 - fifo1			(fifo)
  *   4 - fifo1_reader		(fifo_reader)
  *   5 - fifo_pipe12		(fifo_pipe)	thread kicking DMA controller
  *   6 - fifo2_writer		(fifo_writer)
+ * IOP:
  *   7 - fifo2			(fifo)
  *   8 - fifo2_reader		(fifo_reader)
- *   9 - cons			(testconsumer)	thread consuming data
+ *   9 - fifo_pipe23		(fifo_pipe)	thread kicking DMA controller
+ *  10 - fifo3_writer		(fifo_writer)
+ * EE:
+ *  11 - fifo3			(fifo)
+ *  12 - fifo3_reader		(fifo_reader)
+ *  13 - cons			(testconsumer)	thread consuming data
  */
 
 
 //---------------------------------------------------------------------------
-static void fifo_pipe_transfer_async_complete(void * arg)
+static void dma_transfer_complete(void * arg)
 {
 	struct fifo_pipe_transfer *ptransfer = (struct fifo_pipe_transfer *)arg;
 	fifo_pipe_transfer_commit(ptransfer->ppipe, ptransfer);
 }
 
 //---------------------------------------------------------------------------
-static void fifo_pipe_transfer_async(struct fifo_pipe_transfer *ptransfer)
+static void dma_transfer_ee(struct fifo_pipe_transfer *ptransfer)
 {
-	dma_ee.put(ptransfer->dst, ptransfer->src, ptransfer->size, fifo_pipe_transfer_async_complete, ptransfer);
+	dma_ee.put(ptransfer->dst, ptransfer->src, ptransfer->size, dma_transfer_complete, ptransfer);
+}
+
+//---------------------------------------------------------------------------
+static void dma_transfer_iop(struct fifo_pipe_transfer *ptransfer)
+{
+	dma_iop.put(ptransfer->dst, ptransfer->src, ptransfer->size, dma_transfer_complete, ptransfer);
 }
 
 //---------------------------------------------------------------------------
 void
-test02()
+test03()
 {
 	uint8_t			*databuffer1;		// fifo data
 	struct fifo		fifo1;			// fifo object
@@ -57,6 +70,13 @@ test02()
 	struct fifo_reader	fifo2_reader;		// fifo reader object
 
 	struct fifo_pipe	fifo_pipe12;		// fifo pipe object from fifo1 -> fifo2
+
+	uint8_t			*databuffer3;		// fifo data
+	struct fifo		fifo3;			// fifo object
+	struct fifo_writer	fifo3_writer;		// fifo writer object
+	struct fifo_reader	fifo3_reader;		// fifo reader object
+
+	struct fifo_pipe	fifo_pipe23;		// fifo pipe object from fifo2 -> fifo3
 
 	struct testconsumer	cons;
 	struct testproducer	prod;
@@ -75,7 +95,7 @@ test02()
 
 	// Init fifo pipe 12
 	fifo_pipe_init(&fifo_pipe12, &fifo1_reader, &fifo2_writer);
-	fifo_pipe12.fp_transfer = fifo_pipe_transfer_async;
+	fifo_pipe12.fp_transfer = dma_transfer_ee;
 
 	// Create and hookup thread for pipe 12
 	CPipe cpipe12("Pipe12", &fifo_pipe12);
@@ -84,9 +104,26 @@ test02()
 	fifo2_reader.do_wakeup_writer = CPipe::wakeup;
 	fifo2_reader.do_wakeup_writer_arg = &cpipe12;
 
+	// Init fifo 3
+	databuffer3 = new uint8_t[FIFO_SIZE];
+	fifo_init_create(&fifo3, databuffer3, FIFO_SIZE, FIFO_BD_COUNT, 16);
+	fifo_writer_init(&fifo3_writer, &fifo3);
+	fifo_reader_init(&fifo3_reader, &fifo3);
+
+	// Init fifo pipe 23
+	fifo_pipe_init(&fifo_pipe23, &fifo2_reader, &fifo3_writer);
+	fifo_pipe23.fp_transfer = dma_transfer_iop;
+
+	// Create and hookup thread for pipe 23
+	CPipe cpipe23("Pipe23", &fifo_pipe23);
+	fifo2_writer.do_wakeup_reader = CPipe::wakeup;
+	fifo2_writer.do_wakeup_reader_arg = &cpipe23;
+	fifo3_reader.do_wakeup_writer = CPipe::wakeup;
+	fifo3_reader.do_wakeup_writer_arg = &cpipe23;
+
 	// Init test
 	testproducer_init(&prod, &fifo1_writer, TEST_COUNT);
-	testconsumer_init(&cons, &fifo2_reader, TEST_COUNT);
+	testconsumer_init(&cons, &fifo3_reader, TEST_COUNT);
 
 	// Run the test
 	run_test(&prod, &cons);
@@ -94,4 +131,5 @@ test02()
 	// Cleanup
 	delete[] databuffer1;
 	delete[] databuffer2;
+	delete[] databuffer3;
 }

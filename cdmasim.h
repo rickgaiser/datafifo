@@ -46,7 +46,8 @@ private:
 };
 
 
-extern CDMASim dma1;
+extern CDMASim dma_ee;
+extern CDMASim dma_iop;
 
 
 #endif // CDMASIM_H

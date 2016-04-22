@@ -18,11 +18,8 @@ CPipe::CPipe(const char * sName, struct fifo_pipe * ppipe)
 //---------------------------------------------------------------------------
 CPipe::~CPipe()
 {
-	{
-		std::unique_lock<std::mutex> locker(mutex);
-		bExit = true;
-		cv.notify_all();
-	}
+	bExit = true;
+	CPipe::wakeup(this);
 	thr.join();
 }
 

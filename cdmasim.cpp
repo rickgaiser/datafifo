@@ -4,7 +4,8 @@
 #include "cdmasim.h"
 
 
-CDMASim dma1("DMA1");
+CDMASim dma_ee ("DMA_EE");
+CDMASim dma_iop("DMA_IOP");
 
 
 //---------------------------------------------------------------------------
